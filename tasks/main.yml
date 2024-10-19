@@ -1,0 +1,61 @@
+---
+- name: Ensure Required Items
+  fail:
+    msg: "Please ensure '{{ item.use }}' is set"
+  when:
+    - not {{ item }} is defined or {{ item }} | length == 0
+  with_items:
+    - deploy_dir
+
+- name: Install/Upgrade pm2 package(s)
+  npm:
+    name: "{{ item }}"
+    global: yes
+    state: present
+  become: true
+  when: ((['init', 'processes', 'upgrade'] | intersect(flags)) | length > 0)
+  with_items:
+    - pm2
+    - pmx
+
+- name: Ensure pm2 is not running
+  command: pm2 kill
+  become: false
+  when: ((['init', 'processes', 'upgrade'] | intersect(flags)) | length > 0)
+
+- name: Remove old artifacts from the ansible user's .pm2 directory
+  file:
+    path: /home/{{ ansible_user }}/.pm2/{{ item }}
+    state: absent
+  become: false
+  with_items:
+    - dump.pm2
+    - dump.pm2.bak
+    - pm2.log
+    - pm2.pid
+    - touch
+  when: ((['processes'] | intersect(flags)) | length > 0)
+
+- name: Install pm2-logrotate using PM2
+  command: pm2 install pm2-logrotate
+  become: false
+  args:
+    chdir: "{{ deploy_dir }}"
+  when: ((['processes'] | intersect(flags)) | length > 0)
+
+- name: Start PM2 using ecosystem.yml
+  command: pm2 start ecosystem.yml
+  become: false
+  args:
+    chdir: "{{ deploy_dir }}"
+  when: ((['processes', 'upgrade'] | intersect(flags)) | length > 0)
+
+- name: Set PM2 to start on reboot
+  command: pm2 startup {{ startup_type }} -u {{ ansible_user }} --hp /home/{{ ansible_user }}
+  become: true
+  when: ((['processes', 'upgrade'] | intersect(flags)) | length > 0)
+
+- name: Save PM2
+  command: pm2 save
+  become: false
+  when: ((['processes', 'upgrade'] | intersect(flags)) | length > 0)

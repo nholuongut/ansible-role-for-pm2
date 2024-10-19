@@ -1,0 +1,6 @@
+---
+
+startup_type:   systemd
+
+flags:
+  - none
